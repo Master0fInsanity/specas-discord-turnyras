@@ -3,6 +3,12 @@ name: SPECAS Discord Bot
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "*/5 * * * *"
+
+concurrency:
+  group: specas-discord-bot
+  cancel-in-progress: false
 
 jobs:
   test-bot:
