@@ -23,6 +23,12 @@ jobs:
       - name: Generuoti turnyro paveiksleli
         run: python "bracket_image (1).py"
 
+      - name: Atnaujinti Discord pranesima
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_MESSAGE_ID: ${{ secrets.DISCORD_MESSAGE_ID }}
+        run: python bot.py
+
       - name: Issaugoti paveiksleli
         uses: actions/upload-artifact@v4
         with:
