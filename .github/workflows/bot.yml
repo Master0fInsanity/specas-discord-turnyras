@@ -20,7 +20,11 @@ jobs:
       - name: Idiegti bibliotekas
         run: pip install -r requirements.txt
 
-      - name: Patikrinti Firebase rezultatus
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: python bot.py
+      - name: Generuoti turnyro paveiksleli
+        run: python bracket_image.py
+
+      - name: Issaugoti paveiksleli
+        uses: actions/upload-artifact@v4
+        with:
+          name: SPECAS-turnyro-lentele
+          path: turnyro_lentele.png
