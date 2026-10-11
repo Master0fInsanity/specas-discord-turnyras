@@ -57,13 +57,25 @@ def format_bracket(rounds):
     return "\n".join(lines)
 
 
+
 def main():
     tournament = get_tournament()
     message = format_bracket(tournament["bracket"])
 
-    # Kol kas tik patikriname, ar rezultatai nuskaitomi.
-    # Discord pranešimų dar nesiunčiame.
-    print(message)
+    if len(message) > 2000:
+        raise ValueError("Discord zinute virsija 2000 simboliu.")
+
+    response = requests.post(
+        WEBHOOK_URL,
+        json={
+            "content": message,
+            "allowed_mentions": {"parse": []}
+        },
+        timeout=20
+    )
+    response.raise_for_status()
+
+    print("Turnyro lentele issiusta i Discord!")
 
 
 if __name__ == "__main__":
