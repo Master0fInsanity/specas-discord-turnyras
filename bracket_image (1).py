@@ -1,67 +1,3 @@
-"""Generate a SPECAS.LT tournament bracket image from published Firestore data."""
-import io
-import json
-from pathlib import Path
-
-import requests
-from PIL import Image, ImageDraw, ImageFont, ImageOps
-
-PROJECT = 'specas-deagle-turnyras'
-URL = f'https://firestore.googleapis.com/v1/projects/{PROJECT}/databases/(default)/documents/tournaments/deagle1v1'
-BASE = Path(__file__).resolve().parent
-FONT_LOCATIONS = [
-    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-    '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
-    'C:/Windows/Fonts/arial.ttf',
-]
-
-
-def font(size, bold=False):
-    candidates = ([FONT_LOCATIONS[1]] if bold else []) + FONT_LOCATIONS
-    for path in candidates:
-        try:
-            return ImageFont.truetype(path, size)
-        except OSError:
-            continue
-    return ImageFont.load_default()
-
-
-def fit_name(draw, name, font_obj, max_width):
-    name = str(name or 'Laukiama')
-    while name and draw.textbbox((0, 0), name, font=font_obj)[2] > max_width:
-        name = name[:-1]
-    return name if name else '…'
-
-
-def main():
-    r = requests.get(URL, timeout=25)
-    r.raise_for_status()
-    fields = r.json()['fields']
-    rounds = json.loads(fields['publishedBracket']['stringValue'])
-    confirmations = json.loads(fields.get('confirmed', {}).get('stringValue', '[]'))
-
-    w, h = 1920, 1080
-    bg_path = BASE / 'background.png'
-    if not bg_path.exists():
-        raise FileNotFoundError('Ikeltas background.png nerastas GitHub projekto pagrindiniame aplanke')
-    image = ImageOps.fit(Image.open(bg_path).convert('RGB'), (w, h), method=Image.Resampling.LANCZOS)
-    overlay = Image.new('RGBA', (w, h), (8, 11, 19, 105))
-    image = Image.alpha_composite(image.convert('RGBA'), overlay)
-    draw = ImageDraw.Draw(image)
-
-    draw.rounded_rectangle((42, 22, 1878, 132), radius=22, fill=(8, 12, 22, 202))
-    draw.text((76, 44), 'SPECAS.LT  |  DEAGLE 1V1', font=font(43, True), fill='white')
-    draw.text((79, 101), 'TURNYRO LENTELE  •  PATVIRTINTI REZULTATAI', font=font(17), fill='#e8c58a')
-
-    headings = ['AŠTUNTFINALIS', 'KETVIRTFINALIS', 'PUSFINALIS', 'FINALAS']
-    xs = [50, 520, 990, 1460]
-    card_w, card_h = 410, 78
-    area_top, area_bottom = 225, 995
-    center_y = []
-    for ridx, count in enumerate((8, 4, 2, 1)):
-        centers = [area_top + (i + 0.5) * (area_bottom - area_top) / count for i in range(count)]
-        center_y.append(centers)
-        draw.text((xs[ridx], 169), headings[ridx], font=font(24, True), fill='#f8d19b')
 
     # Connecting lines are drawn first, so they stay behind the cards.
     for ridx in range(3):
@@ -72,6 +8,15 @@ def main():
             x0, x1 = xs[ridx] + card_w, xs[ridx + 1]
             mid = (x0 + x1) // 2
             draw.line([(x0, cy), (mid, cy), (mid, target), (x1, target)], fill=(230, 195, 139, 175), width=3)
+
+    # Papildoma bronzine saka is pusfinalio pralaimetoju.
+    third_x, third_cy = xs[3], 888
+    third_start = xs[2] + card_w
+    draw.line([(third_start, int(center_y[2][0])), (1444, int(center_y[2][0])),
+               (1444, third_cy), (third_x, third_cy)], fill='#caa06d', width=3)
+    draw.line([(third_start, int(center_y[2][1])), (1450, int(center_y[2][1])),
+               (1450, third_cy)], fill='#caa06d', width=3)
+    draw.text((third_x, 813), 'DEL 3-IOS VIETOS', font=font(23, True), fill='#f8d19b')
 
     for ridx, matches in enumerate(rounds[:4]):
         for midx, match in enumerate(matches[:len(center_y[ridx])]):
@@ -108,6 +53,48 @@ def main():
                         draw.rounded_rectangle((x + card_w - 66, yy - 2, x + card_w - 12, yy + 30), radius=7, outline='#ffd36b', width=2)
                 except (ValueError, TypeError):
                     pass
+
+    # Penktas duomenu masyvo etapas yra viena dvikova del 3-iosios vietos.
+    # Senieji Firestore irasai neturi penkto etapo, tad rodome laukimo kortele.
+    third_match = (rounds[4][0] if len(rounds) > 4 and len(rounds[4]) > 0
+                   and isinstance(rounds[4][0], list) and len(rounds[4][0]) >= 2 else [{}, {}])
+    third_confirmed = (len(confirmations) > 4 and isinstance(confirmations[4], list)
+                       and len(confirmations[4]) > 0 and confirmations[4][0] is True)
+    tx, ty = third_x, int(third_cy - card_h / 2)
+    bronze_layer = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+    bronze_draw = ImageDraw.Draw(bronze_layer)
+    bronze_draw.rounded_rectangle((tx, ty, tx + card_w, ty + card_h), radius=11,
+                                  fill=(12, 17, 29, 125), outline=(230, 174, 99, 220), width=3)
+    image = Image.alpha_composite(image, bronze_layer)
+    draw = ImageDraw.Draw(image)
+    third_scores = []
+    third_names = []
+    for pidx, player in enumerate(third_match[:2]):
+        player = player if isinstance(player, dict) else {}
+        name = player.get('name') or 'Laukiama'
+        score = player.get('score', '')
+        third_names.append(name)
+        third_scores.append(score)
+        yy = ty + 10 + pidx * 35
+        draw.text((tx + 15, yy), fit_name(draw, name, font(22, True), card_w - 100),
+                  font=font(22, True), fill='#ffffff')
+        draw.text((tx + card_w - 51, yy), str(score) if score != '' else '–',
+                  font=font(22, True), fill='#ffffff')
+    if third_confirmed:
+        if third_scores[0] == '2' and third_scores[1] in ('0', '1'):
+            bronze_winner = 0
+        elif third_scores[1] == '2' and third_scores[0] in ('0', '1'):
+            bronze_winner = 1
+        else:
+            bronze_winner = -1
+        if bronze_winner >= 0:
+            yy = ty + 10 + bronze_winner * 35
+            draw.rounded_rectangle((tx + card_w - 66, yy - 2, tx + card_w - 12, yy + 30),
+                                   radius=7, outline='#ffd36b', width=2)
+            draw.text((tx, 949), '3 VIETA: ' + fit_name(draw, third_names[bronze_winner], font(19, True), 300),
+                      font=font(19, True), fill='#f8d19b')
+            draw.text((tx, 978), '4 VIETA: ' + fit_name(draw, third_names[1-bronze_winner], font(17), 300),
+                      font=font(17), fill='#e5ddcf')
 
     draw.rounded_rectangle((45, 1010, 1875, 1064), radius=12, fill=(9, 13, 22, 205))
     draw.text((70, 1026), 'Pilna turnyro lentele: specas-deagle-turnyras.web.app', font=font(22), fill='white')
